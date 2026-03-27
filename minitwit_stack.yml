@@ -1,0 +1,37 @@
+volumes:
+    mysql_data:
+
+services:
+    # visualizer:
+    #     image: dockersamples/visualizer:stable  # No ARM64 support - temporarily disabled
+    #     ports:
+    #         - "8888:8080"
+    #     volumes:
+    #         - "/var/run/docker.sock:/var/run/docker.sock"
+    #     deploy:
+    #         placement:
+    #             constraints: [node.role == manager]
+
+    minitwit:
+        image: ghcr.io/patnei/minitwitimage:latest # For local: build first. For DO: use GHCR image
+        # build:                       # Uncomment for local development
+        #     context: ./docker/minitwit
+        #     dockerfile: Dockerfile-minitwit
+        ports:
+            - "5001:5000"
+        deploy:
+            replicas: 5
+
+    itusqlimage:
+        image: mariadb:10.6
+        ports:
+            - "3306:3306"
+        environment:
+            - MYSQL_ROOT_PASSWORD=megetsikkertkodeord
+        volumes:
+            - mysql_data:/var/lib/mysql
+            - ./docker/minitwit/minitwit_init.sql:/docker-entrypoint-initdb.d/init.sql
+        deploy:
+            replicas: 1
+            placement:
+                constraints: [node.role == manager]
