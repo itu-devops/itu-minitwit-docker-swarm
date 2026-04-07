@@ -1,285 +1,55 @@
-# Minitwit on Docker Swarm
+# _ITU-MiniTwit_ on Docker Swarm
 
-This project demonstrates Docker Swarm fundamentals with a minimal stack.
+This project demonstrates Docker Swarm fundamentals with a minimal _ITU-MiniTwit_ stack deployed to a Docker Swarm cluster consisting of local virtual machines.
 
-## Prerequisites
 
-- Docker installed on your machine (for local) or
-- A DigitalOcean account with SSH key uploaded
+## Bring up the Swarm
 
-## Option A: Local Docker Swarm (Simplest)
+This Docker Swarm cluster consists of one manager node and two worker nodes, see default configuration in [Vagrantfile](./Vagrantfile).
+Each node is configured with 2 CPUs and 2048 MB of RAM.
+The manager node has the IP address 192.168.20.6.
+The worker nodes are assigned IP addresses 192.168.20.7 and 192.168.20.8 respectively.
 
-### Step 1: Initialize Docker Swarm
 
-```bash
-docker swarm init
-```
 
-### Step 2: Build the Minitwit Image
+To bring up this Docker Swarm cluster run:
 
 ```bash
-cd docker/minitwit
-docker build -t minitwitimage:latest -f Dockerfile-minitwit .
-cd ../..
+vagrant up
 ```
 
-### Step 3: Deploy the stack
+Note, since this creates and configures multiple virtual machines, this will take some time.
+While the cluster is created, familiarize yourself with the [provisioner scripts](./provisioners).
+
+
+## Deploy the Application Stack
+
+On the swarm manager node, execute the following command>
 
 ```bash
 docker stack deploy -c minitwit_stack.yml minitwit
 ```
 
-### Step 4: Access the application
-
-- Minitwit Application: http://localhost:5001
-- Visualizer: http://localhost:8888 (NOTE: Doesn't work on ARM Devices, see `minitwit_stack.yml` for potential fixes)
-
----
-
-## Option B: DigitalOcean (Cloud)
-
-This option deploys a multi-node Docker Swarm cluster on DigitalOcean using curl commands against the DigitalOcean API.
-
-### Prerequisites
-
-1. **DigitalOcean Account**: Sign up at https://cloud.digitalocean.com
-2. **DigitalOcean Token**: Generate at https://cloud.digitalocean.com/account/api/
-3. **SSH Key Uploaded**: Upload your public SSH key at https://cloud.digitalocean.com/account/security
-
-### Step 1: Setup Environment
-
-Copy the template and fill in your credentials:
+You can execute commands directly on the nodes via SSH as in the following.
+If in doubt, read the respective help `vagrant ssh --help`.
 
 ```bash
-cp env_template secrets
-source secrets
-```
-
-Or set up your shell variables manually:
-
-```bash
-export DIGITAL_OCEAN_TOKEN=your_token_here
-export SSH_FINGERPRINT=your_ssh_fingerprint_here
-```
-
-Then set up these environment variables.
-
-```bash
-# These are used by the API
-export DROPLETS_API="https://api.digitalocean.com/v2/droplets"
-export BEARER_AUTH_TOKEN="Authorization: Bearer $DIGITAL_OCEAN_TOKEN"
-export JSON_CONTENT="Content-Type: application/json"
-```
-
-verify that they are correctly set
-
-```bash
-echo $DROPLETS_API # feel free to test the others.
-```
-
-### Step 2: Create the Swarm Manager
-
-```bash
-# Create the manager droplet
-CONFIG='{"name":"swarm-manager","region":"fra1","size":"s-1vcpu-1gb","image":"docker-20-04","ssh_keys":["'"$SSH_FINGERPRINT"'"],"tags":["minitwit-swarm"]}'
-
-MANAGER_ID=$(curl -X POST "$DROPLETS_API" -d "$CONFIG" \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    | jq -r .droplet.id)
-
-echo "Created manager droplet with ID: $MANAGER_ID"
-echo "Waiting for droplet to be ready..."
-sleep 120 # Can take a while
-
-```
-
-```bash
-# Get the manager IP address
-export JQFILTER='.droplets | .[] | select (.name == "swarm-manager")
-    | .networks.v4 | .[]| select (.type == "public") | .ip_address'
-
-export MANAGER_IP=$(curl -s "$DROPLETS_API" \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    | jq -r "$JQFILTER")
-
-echo "MANAGER_IP=$MANAGER_IP"
-```
-
-### Step 3: Create Worker Nodes
-
-```bash
-# Create Worker 1
-WORKER1_ID=$(curl -X POST "$DROPLETS_API" \
-    -d '{"name":"worker1","region":"fra1",
-        "size":"s-1vcpu-1gb","image":"docker-20-04",
-        "ssh_keys":["'"$SSH_FINGERPRINT"'"],"tags":["minitwit-swarm"]}' \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    | jq -r .droplet.id)
-
-echo "Created worker1 with ID: $WORKER1_ID"
-sleep 5
-
-# Create Worker 2
-WORKER2_ID=$(curl -X POST "$DROPLETS_API" \
-    -d '{"name":"worker2","region":"fra1",
-        "size":"s-1vcpu-1gb","image":"docker-20-04",
-        "ssh_keys":["'"$SSH_FINGERPRINT"'"],"tags":["minitwit-swarm"]}' \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    | jq -r .droplet.id)
-
-echo "Created worker2 with ID: $WORKER2_ID"
-sleep 5
-sleep 120 # can take a while
-```
-
-```bash
-# Get Worker 1 IP
-export JQFILTER='.droplets | .[] | select (.name == "worker1")
-    | .networks.v4 | .[]| select (.type == "public") | .ip_address'
-
-export WORKER1_IP=$(curl -s "$DROPLETS_API" \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    | jq -r "$JQFILTER")
-
-echo "WORKER1_IP=$WORKER1_IP"
-
-# Get Worker 2 IP
-export JQFILTER='.droplets | .[] | select (.name == "worker2")
-    | .networks.v4 | .[]| select (.type == "public") | .ip_address'
-
-export WORKER2_IP=$(curl -s "$DROPLETS_API" \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    | jq -r "$JQFILTER")
-
-echo "WORKER2_IP=$WORKER2_IP"
-```
-
-### Step 4: Configure Firewall
-
-**Note:** The following ports are required on ALL Swarm nodes:
-
-- 22/tcp: SSH access
-- 7946/tcp+udp: Container network discovery
-- 4789/udp: VXLAN overlay network (routing mesh)
-- 5001/tcp: Application port
-
-**Invariant:** Ports 2376/tcp (Docker TLS) and 2377/tcp (Swarm management) are ONLY needed on manager nodes, not on workers.
-
-#### Configure Manager Firewall
-
-```bash
-ssh root@$MANAGER_IP "ufw allow 22/tcp && ufw allow 2376/tcp && \
-ufw allow 2377/tcp && ufw allow 7946/tcp && ufw allow 7946/udp && \
-ufw allow 4789/udp && ufw allow 5001/tcp && ufw reload && ufw --force enable && \
-systemctl restart docker"
-```
-
-#### Configure Worker 1 Firewall
-
-```bash
-ssh root@$WORKER1_IP "ufw allow 22/tcp && ufw allow 7946/tcp && ufw allow 7946/udp && \
-ufw allow 4789/udp && ufw allow 5001/tcp && ufw reload && ufw --force enable && \
-systemctl restart docker"
-```
-
-#### Configure Worker 2 Firewall
-
-```bash
-ssh root@$WORKER2_IP "ufw allow 22/tcp && ufw allow 7946/tcp && ufw allow 7946/udp && \
-ufw allow 4789/udp && ufw allow 5001/tcp && ufw reload && ufw --force enable && \
-systemctl restart docker"
-```
-
-### Step 5: Initialize the Swarm
-
-```bash
-ssh root@$MANAGER_IP "docker swarm init --advertise-addr $MANAGER_IP"
-```
-
-Get the worker token:
-
-```bash
-WORKER_TOKEN=$(ssh root@$MANAGER_IP "docker swarm join-token worker -q")
-echo "Worker token: $WORKER_TOKEN"
-```
-
-### Step 6: Join Workers to the Swarm
-
-```bash
-# Join Worker 1
-ssh root@$WORKER1_IP "docker swarm join --token $WORKER_TOKEN $MANAGER_IP:2377"
-
-# Join Worker 2
-ssh root@$WORKER2_IP "docker swarm join --token $WORKER_TOKEN $MANAGER_IP:2377"
-```
-
-### Step 7: Verify the Cluster
-
-```bash
-ssh root@$MANAGER_IP "docker node ls"
-```
-
-You should see all three nodes listed.
-
-### Step 8: Deploy the Stack
-
-```bash
-# Copy the docker directory with seed script to manager
-scp -r docker/ root@$MANAGER_IP:~/
-
-# Copy the stack file to the manager
-scp minitwit_stack.yml root@$MANAGER_IP:~
-
-# Deploy the stack
-ssh root@$MANAGER_IP "docker stack deploy -c minitwit_stack.yml minitwit"
-```
-
-**Note:** For DigitalOcean deployment, you need a publicly accessible image.
-
-**Option A - Use pre-built GHCR image (Dockerhub alternative):**
-Update `stack/minitwit_stack.yml` to use:
-
-```yaml
-image: ghcr.io/itu-devops/minitwitimage:latest
-```
-
-**Option B - Build and push your own (feel free to replace ghcr.io with dockerhub etc.):**
-
-```bash
-# Build with your GHCR username
-docker build -t ghcr.io/YOURUSERNAME/minitwitimage:latest -f docker/minitwit/Dockerfile-minitwit .
-
-# Login to GHCR (requires personal access token)
-docker login ghcr.io -u YOURUSERNAME
-
-# Push
-docker push ghcr.io/YOURUSERNAME/minitwitimage:latest
-
-# Update stack file with your image
-```
-
-Then copy and deploy the stack.
-
-### Step 9: Verify Deployment
-
-```bash
-# Check services
-ssh root@$MANAGER_IP "docker service ls"
-
-# Check stack status
-ssh root@$MANAGER_IP "docker stack ps minitwit"
+vagrant ssh swarm-manager-1 -c  "docker stack deploy -c minitwit_stack.yml minitwit"
 ```
 
 ### Access the Application
 
-- Minitwit Application: http://$MANAGER_IP:5001
-- Visualizer: http://$MANAGER_IP:8888
+- Minitwit Application: http://192.168.20.6:5001
+- Visualizer: http://192.168.20.6:8888
+
+Note, per default the visualizer container image, is currently not supported on ARM devices like Apple MacBooks.
+If required, you might [build your own image supporting your architecture](https://github.com/dockersamples/docker-swarm-visualizer#building-a-custom-image).
 
 ---
 
 ## Docker Stack Explanation
 
-The `minitwit_stack.yml` file defines the services:
+The [`minitwit_stack.yml`](./minitwit_stack.yml) file defines the services:
 
 | Service       | Image                    | Description                                              |
 | ------------- | ------------------------ | -------------------------------------------------------- |
@@ -304,56 +74,127 @@ Nodes in a Docker Swarm have these roles:
 ## Useful Commands
 
 ```bash
+
+vagrant ssh swarm-manager-1 -c "docker stack deploy -c /vagrant/minitwit_stack.yml minitwit"
+
 # List all nodes
-docker node ls
+vagrant ssh swarm-manager-1 -c "docker node ls"
 
 # List containers on each node
-for node in $(docker node ls -q); do docker node ps $node; done
+vagrant ssh swarm-manager-1 -c 'for node in $(docker node ls -q); do docker node ps $node; done'
 
 # List all services
-docker service ls
+vagrant ssh swarm-manager-1 -c "docker service ls"
 
 # List containers in a service
-docker service ps <service-name>
+vagrant ssh swarm-manager-1 -c "docker service ps <service-name>"
 
 # Scale a service manually
-docker service scale minitwit_minitwit=10
+vagrant ssh swarm-manager-1 -c "docker service scale minitwit_minitwit=10"
 
 # Force recreate all containers (redistribute across cluster)
-for service in $(docker service ls -q); do docker service update --force $service; done
+vagrant ssh swarm-manager-1 -c "for service in $(docker service ls -q); do docker service update --force $service; done"
 
 # Rolling update of a service
-docker service update --image minitwitimage:latest <service-name>
+vagrant ssh swarm-manager-1 -c "docker service update --image minitwitimage:latest <service-name>"
 
 # Rollback last update
-docker service rollback <service-name>
+vagrant ssh swarm-manager-1 -c "docker service rollback <service-name>"
 
 # Remove the stack
-docker stack rm minitwit
+vagrant ssh swarm-manager-1 -c "docker stack rm minitwit"
 
 # Leave the swarm (on worker nodes)
-docker swarm leave
+vagrant ssh swarm-manager-1 -c "docker swarm leave"
 
 # Leave the swarm as manager (on manager node)
-docker swarm leave --force
+vagrant ssh swarm-manager-1 -c "docker swarm leave --force"
 ```
 
 ---
 
-## Cleaning Up (DigitalOcean)
+## Task 1: Deployment and Scaling of the Application
 
-To delete all droplets:
+Deploy the application to the Docker Swarm cluster.
+Per default, this creates two instances (called _replicas_) of the _ITU-MiniTwit_ application on the cluster
 
 ```bash
-curl -X DELETE \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    "https://api.digitalocean.com/v2/droplets?tag_name=minitwit-swarm"
+vagrant ssh swarm-manager-1 -c "docker stack deploy -c /vagrant/minitwit_stack.yml minitwit"
 ```
 
-Or delete individual droplets:
+With your browser, navigate to the Docker Swarm visualizer tool and verify that you have two replicas of the _ITU-MiniTwit_ application running on the cluster as well as one instance of the database container and visualizer container (both on the manager node).
 
 ```bash
-curl -X DELETE \
-    -H "$BEARER_AUTH_TOKEN" -H "$JSON_CONTENT" \
-    "https://api.digitalocean.com/v2/droplets/$MANAGER_ID"
+open http://192.168.20.6:8888
+```
+
+Now, scale up the _ITU-MiniTwit_ application to ten instances:
+
+```bash
+vagrant ssh swarm-manager-1 -c "docker service scale minitwit_minitwit=10"
+```
+
+Double check in the visualizer that you have the respective amount of containers distributed over the network.
+
+Thereafter, scale down the _ITU-MiniTwit_ application to five instances:
+
+```bash
+vagrant ssh swarm-manager-1 -c "docker service scale minitwit_minitwit=5"
+```
+
+Now, check directly on each node which container is running:
+
+```bash
+vagrant ssh swarm-manager-1 -c 'for node in $(docker node ls -q); do docker node ps $node; done'
+```
+
+
+## Task 2: Scaling of the Docker Swarm Cluster
+
+Manually, create yet another worker node and make it join the Docker Swarm cluster.
+First, change line 9 in the Vagrantfile from `WORKER_COUNT = 2` to `WORKER_COUNT = 3`.
+Now, create a new node for the cluster.
+
+```bash
+vagrant up swarm-worker-3
+```
+
+Check in the visualizer, that you have now three worker nodes in the cluster.
+
+How does the worker node join the swarm?
+Inspect the [`join_swarm_worker.sh`](./provisioners/join_swarm_worker.sh) script.
+It calls the script `/vagrant/swarm-tokens/join_worker.sh`, which is generated automatically during provisioning of the manager node.
+You can find this script on your local host at [`/vagrant/swarm-tokens/join_worker.sh`](./swarm-tokens/join_worker.sh)
+
+To experiment with how nodes join a Docker Swarm cluster, first let the newly created node leave the cluster:
+
+```bash
+vagrant ssh swarm-worker-3 -c "docker swarm leave"
+```
+
+Double check in the visualizer, that you have now only two worker nodes in the cluster.
+
+On your host, inspect the contents of the [`join_worker.sh`](./swarm-tokens/join_worker.sh) script, which each worker node executes automatically during provisioning.
+Now, on the newly created worker node `swarm-worker-3`, execute that script to join the swarm again:
+
+```bash
+vagrant ssh swarm-worker-3 -c "bash /vagrant/swarm-tokens/join_worker.sh"
+```
+
+Double check in the visualizer, that you have now three worker nodes in the cluster again.
+
+---
+
+## Cleaning Up
+
+To destroy all nodes of the local Docker Swarm cluster, run:
+
+```bash
+vagrant destroy
+```
+
+Delete the script containing the join token of the not existing manager node:
+
+```bash
+rm ./swarm-tokens/join_worker.sh
 ```
