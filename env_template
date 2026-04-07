@@ -1,7 +1,0 @@
-# DigitalOcean API Token (required for DigitalOcean deployment)
-# Get from: https://cloud.digitalocean.com/account/api/
-export DIGITAL_OCEAN_TOKEN=
-
-# SSH Key Fingerprint from DigitalOcean
-# Upload your SSH key at: https://cloud.digitalocean.com/account/security
-export SSH_FINGERPRINT=
