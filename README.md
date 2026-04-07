@@ -240,7 +240,7 @@ ssh root@$MANAGER_IP "docker stack deploy -c minitwit_stack.yml minitwit"
 Update `stack/minitwit_stack.yml` to use:
 
 ```yaml
-image: ghcr.io/itu-devops/minitwitimage:latest
+image: ghcr.io/itu-devops/itu-minitwit-docker-swarm/minitwitimage:latest
 ```
 
 **Option B - Build and push your own (feel free to replace ghcr.io with dockerhub etc.):**
