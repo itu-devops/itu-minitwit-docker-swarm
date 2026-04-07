@@ -13,7 +13,7 @@ services:
     #             constraints: [node.role == manager]
 
     minitwit:
-        image: ghcr.io/patnei/minitwitimage:latest # For local: build first. For DO: use GHCR image
+        image: ghcr.io/itu-devops/itu-minitwit-docker-swarm/minitwitimage:latest # For local: build first. For DO: use GHCR image
         # build:                       # Uncomment for local development
         #     context: ./docker/minitwit
         #     dockerfile: Dockerfile-minitwit
