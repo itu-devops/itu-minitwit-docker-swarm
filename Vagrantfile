@@ -6,7 +6,7 @@ Vagrant.configure("2") do |config|
 
   # Define the number of swarm nodes
   MANAGER_COUNT = 1
-  WORKER_COUNT = 3
+  WORKER_COUNT = 2
   BASE_IP = "192.168.20"
   IP_START = 6
 
