@@ -24,9 +24,9 @@ Vagrant.configure("2") do |config|
 
       # Provision with Docker and initialize swarm
       manager.vm.provision "shell", path: "provisioners/install_docker.sh"
+      manager.vm.provision "shell", path: "provisioners/build_app_image.sh"
       manager.vm.provision "shell", path: "provisioners/configure_firewall_manager.sh"
       manager.vm.provision "shell", path: "provisioners/init_swarm_manager.sh", args: "#{BASE_IP}.#{IP_START + i - 1}"
-      manager.vm.provision "shell", path: "provisioners/build_app_image.sh"
     end
   end
 
@@ -44,6 +44,7 @@ Vagrant.configure("2") do |config|
 
       # Provision with Docker
       worker.vm.provision "shell", path: "provisioners/install_docker.sh"
+      worker.vm.provision "shell", path: "provisioners/build_app_image.sh"
       worker.vm.provision "shell", path: "provisioners/configure_firewall_worker.sh"
       worker.vm.provision "shell", path: "provisioners/join_swarm_worker.sh"
     end
