@@ -27,6 +27,7 @@ While the cluster is created, familiarize yourself with the [provisioner scripts
 On the swarm manager node, execute the following command>
 
 ```bash
+cd /vagrant
 docker stack deploy -c minitwit_stack.yml minitwit
 ```
 
@@ -34,7 +35,7 @@ You can execute commands directly on the nodes via SSH as in the following.
 If in doubt, read the respective help `vagrant ssh --help`.
 
 ```bash
-vagrant ssh swarm-manager-1 -c  "docker stack deploy -c minitwit_stack.yml minitwit"
+vagrant ssh swarm-manager-1 -c  "docker stack deploy -c /vagrant/minitwit_stack.yml minitwit"
 ```
 
 ### Access the Application
@@ -153,6 +154,11 @@ vagrant ssh swarm-manager-1 -c 'for node in $(docker node ls -q); do docker node
 
 Manually, create yet another worker node and make it join the Docker Swarm cluster.
 First, change line 9 in the Vagrantfile from `WORKER_COUNT = 2` to `WORKER_COUNT = 3`.
+
+```bash
+sed -i 's/  WORKER_COUNT = 2/  WORKER_COUNT = 3/g' Vagrantfile
+```
+
 Now, create a new node for the cluster.
 
 ```bash
